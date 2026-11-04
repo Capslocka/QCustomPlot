@@ -5,13 +5,7 @@ project(QCustomPlot VERSION 2.1.1 LANGUAGES CXX)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-  set(QCUSTOMPLOT_TOP_LEVEL ON)
-else()
-  set(QCUSTOMPLOT_TOP_LEVEL OFF)
-endif()
-
-option(QCUSTOMPLOT_BUILD_EXAMPLES "Build the QCustomPlot example applications" ${QCUSTOMPLOT_TOP_LEVEL})
+option(QCUSTOMPLOT_BUILD_EXAMPLES "Build the QCustomPlot example applications" OFF)
 option(QCUSTOMPLOT_USE_OPENGL "Enable OpenGL hardware acceleration (defines QCUSTOMPLOT_USE_OPENGL)" OFF)
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Gui Widgets PrintSupport)
