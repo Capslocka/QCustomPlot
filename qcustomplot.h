@@ -2150,6 +2150,8 @@ class QCP_LIB_DECL QCPAxis : public QCPLayerable
   Q_PROPERTY(QColor labelColor READ labelColor WRITE setLabelColor)
   Q_PROPERTY(QString label READ label WRITE setLabel)
   Q_PROPERTY(int labelPadding READ labelPadding WRITE setLabelPadding)
+  Q_PROPERTY(Qt::Orientation labelOrientation READ labelOrientation WRITE setLabelOrientation)
+  Q_PROPERTY(int labelWrapWidth READ labelWrapWidth WRITE setLabelWrapWidth)
   Q_PROPERTY(int padding READ padding WRITE setPadding)
   Q_PROPERTY(int offset READ offset WRITE setOffset)
   Q_PROPERTY(SelectableParts selectedParts READ selectedParts WRITE setSelectedParts NOTIFY selectionChanged)
@@ -2163,6 +2165,8 @@ class QCP_LIB_DECL QCPAxis : public QCPLayerable
   Q_PROPERTY(QPen selectedSubTickPen READ selectedSubTickPen WRITE setSelectedSubTickPen)
   Q_PROPERTY(QCPLineEnding lowerEnding READ lowerEnding WRITE setLowerEnding)
   Q_PROPERTY(QCPLineEnding upperEnding READ upperEnding WRITE setUpperEnding)
+  Q_PROPERTY(QString labelPrefix READ labelPrefix WRITE setLabelPrefix)
+  Q_PROPERTY(QString labelSuffix READ labelSuffix WRITE setLabelSuffix)
   Q_PROPERTY(QCPGrid* grid READ grid)
   /// \endcond
 public:
@@ -2241,6 +2245,8 @@ public:
   QColor labelColor() const { return mLabelColor; }
   QString label() const { return mLabel; }
   int labelPadding() const;
+  Qt::Orientation labelOrientation() const;
+  int labelWrapWidth() const;
   int padding() const { return mPadding; }
   int offset() const;
   SelectableParts selectedParts() const { return mSelectedParts; }
@@ -2254,6 +2260,8 @@ public:
   QPen selectedSubTickPen() const { return mSelectedSubTickPen; }
   QCPLineEnding lowerEnding() const;
   QCPLineEnding upperEnding() const;
+  QString labelPrefix() const { return mLabelPrefix; }
+  QString labelSuffix() const { return mLabelSuffix; }
   QCPGrid *grid() const { return mGrid; }
   
   // setters:
@@ -2288,6 +2296,8 @@ public:
   void setLabelColor(const QColor &color);
   void setLabel(const QString &str);
   void setLabelPadding(int padding);
+  void setLabelOrientation(Qt::Orientation orientation);
+  void setLabelWrapWidth(int width);
   void setPadding(int padding);
   void setOffset(int offset);
   void setSelectedTickLabelFont(const QFont &font);
@@ -2301,6 +2311,8 @@ public:
   Q_SLOT void setSelectedParts(const QCPAxis::SelectableParts &selectedParts);
   void setLowerEnding(const QCPLineEnding &ending);
   void setUpperEnding(const QCPLineEnding &ending);
+  void setLabelPrefix(const QString& prefix);
+  void setLabelSuffix(const QString& suffix);
   
   // reimplemented virtual methods:
   virtual double selectTest(const QPointF &pos, bool onlySelectable, QVariant *details=nullptr) const Q_DECL_OVERRIDE;
@@ -2367,6 +2379,7 @@ protected:
   QCPRange mRange;
   bool mRangeReversed;
   ScaleType mScaleType;
+  QString mLabelPrefix, mLabelSuffix;
   
   // non-property members:
   QCPGrid *mGrid;
@@ -2444,6 +2457,8 @@ public:
   QFont labelFont;
   QColor labelColor;
   QString label;
+  Qt::Orientation labelOrientation; // directly accessed by QCPAxis setters/getters
+  int labelWrapWidth; // directly accessed by QCPAxis setters/getters
   int tickLabelPadding; // directly accessed by QCPAxis setters/getters
   double tickLabelRotation; // directly accessed by QCPAxis setters/getters
   QCPAxis::LabelSide tickLabelSide; // directly accessed by QCPAxis setters/getters
@@ -2480,6 +2495,7 @@ protected:
   QRect mAxisSelectionBox, mTickLabelsSelectionBox, mLabelSelectionBox;
   
   virtual QByteArray generateLabelParameterHash() const;
+  virtual QSize labelSize() const;
   
   virtual void placeTickLabel(QCPPainter *painter, double position, int distanceToAxis, const QString &text, QSize *tickLabelsSize);
   virtual void drawTickLabel(QCPPainter *painter, double x, double y, const TickLabelData &labelData) const;

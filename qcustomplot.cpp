@@ -8335,6 +8335,18 @@ int QCPAxis::labelPadding() const
 }
 
 /* No documentation as it is a property getter */
+Qt::Orientation QCPAxis::labelOrientation() const
+{
+  return mAxisPainter->labelOrientation;
+}
+
+/* No documentation as it is a property getter */
+int QCPAxis::labelWrapWidth() const
+{
+  return mAxisPainter->labelWrapWidth;
+}
+
+/* No documentation as it is a property getter */
 int QCPAxis::offset() const
 {
   return mAxisPainter->offset;
@@ -8951,6 +8963,25 @@ void QCPAxis::setLabel(const QString &str)
   }
 }
 
+void QCPAxis::setLabelOrientation(Qt::Orientation orientation)
+{
+  if (mAxisPainter->labelOrientation != orientation)
+  {
+    mAxisPainter->labelOrientation = orientation;
+    mCachedMarginValid = false;
+  }
+}
+
+void QCPAxis::setLabelWrapWidth(int width)
+{
+  width = qMax(0, width);
+  if (mAxisPainter->labelWrapWidth != width)
+  {
+    mAxisPainter->labelWrapWidth = width;
+    mCachedMarginValid = false;
+  }
+}
+
 /*!
   Sets the distance between the tick labels and the axis label.
   
@@ -9104,6 +9135,17 @@ void QCPAxis::setUpperEnding(const QCPLineEnding &ending)
 {
   mAxisPainter->upperEnding = ending;
 }
+
+void QCPAxis::setLabelPrefix(const QString& prefix)
+{
+	mLabelPrefix = prefix;
+}
+
+void QCPAxis::setLabelSuffix(const QString& suffix)
+{
+	mLabelSuffix = suffix;
+}
+
 
 /*!
   If the scale type (\ref setScaleType) is \ref stLinear, \a diff is added to the lower and upper
@@ -9690,7 +9732,7 @@ void QCPAxis::draw(QCPPainter *painter)
     {
       tickPositions.append(coordToPixel(mTickVector.at(i)));
       if (mTickLabels)
-        tickLabels.append(mTickVectorLabels.at(i));
+        tickLabels.append(mLabelPrefix + mTickVectorLabels.at(i) + mLabelSuffix);
     }
 
     if (mSubTicks)
@@ -9901,6 +9943,8 @@ QCPAxisPainterPrivate::QCPAxisPainterPrivate(QCustomPlot *parentPlot) :
   lowerEnding(QCPLineEnding::esNone),
   upperEnding(QCPLineEnding::esNone),
   labelPadding(0),
+  labelOrientation(Qt::Vertical),
+  labelWrapWidth(0),
   tickLabelPadding(0),
   tickLabelRotation(0),
   tickLabelSide(QCPAxis::lsOutside),
@@ -10040,33 +10084,52 @@ void QCPAxisPainterPrivate::draw(QCPPainter *painter)
     painter->setClipRect(oldClipRect);
   
   // axis label:
-  QRect labelBounds;
+  QSize labelBounds(0, 0);
+  int labelBoxWidth = 0;
   if (!label.isEmpty())
   {
     margin += labelPadding;
     painter->setFont(labelFont);
     painter->setPen(QPen(labelColor));
-    labelBounds = painter->fontMetrics().boundingRect(0, 0, 0, 0, Qt::TextDontClip, label);
+    labelBounds = labelSize();
+    labelBoxWidth = labelWrapWidth > 0 ? labelWrapWidth : labelBounds.width();
+    int flags = Qt::TextDontClip | Qt::AlignCenter;
+    if (labelWrapWidth > 0)
+      flags |= Qt::TextWordWrap;
     if (type == QCPAxis::atLeft)
     {
       QTransform oldTransform = painter->transform();
-      painter->translate((origin.x()-margin-labelBounds.height()), origin.y());
-      painter->rotate(-90);
-      painter->drawText(0, 0, axisRect.height(), labelBounds.height(), Qt::TextDontClip | Qt::AlignCenter, label);
+      if (labelOrientation == Qt::Horizontal)
+      {
+        painter->translate((origin.x()-margin-labelBoxWidth), origin.y()-axisRect.height());
+        painter->drawText(0, 0, labelBoxWidth, axisRect.height(), flags, label);
+      } else
+      {
+        painter->translate((origin.x()-margin-labelBounds.height()), origin.y()-(axisRect.height()-labelBoxWidth)/2);
+        painter->rotate(-90);
+        painter->drawText(0, 0, labelBoxWidth, labelBounds.height(), flags, label);
+      }
       painter->setTransform(oldTransform);
     }
     else if (type == QCPAxis::atRight)
     {
       QTransform oldTransform = painter->transform();
-      painter->translate((origin.x()+margin+labelBounds.height()), origin.y()-axisRect.height());
-      painter->rotate(90);
-      painter->drawText(0, 0, axisRect.height(), labelBounds.height(), Qt::TextDontClip | Qt::AlignCenter, label);
+      if (labelOrientation == Qt::Horizontal)
+      {
+        painter->translate((origin.x()+margin), origin.y()-axisRect.height());
+        painter->drawText(0, 0, labelBoxWidth, axisRect.height(), flags, label);
+      } else
+      {
+        painter->translate((origin.x()+margin+labelBounds.height()), origin.y()-axisRect.height()+(axisRect.height()-labelBoxWidth)/2);
+        painter->rotate(90);
+        painter->drawText(0, 0, labelBoxWidth, labelBounds.height(), flags, label);
+      }
       painter->setTransform(oldTransform);
     }
     else if (type == QCPAxis::atTop)
-      painter->drawText(origin.x(), origin.y()-margin-labelBounds.height(), axisRect.width(), labelBounds.height(), Qt::TextDontClip | Qt::AlignCenter, label);
+      painter->drawText(origin.x()+(axisRect.width()-labelBoxWidth)/2, origin.y()-margin-labelBounds.height(), labelBoxWidth, labelBounds.height(), flags, label);
     else if (type == QCPAxis::atBottom)
-      painter->drawText(origin.x(), origin.y()+margin, axisRect.width(), labelBounds.height(), Qt::TextDontClip | Qt::AlignCenter, label);
+      painter->drawText(origin.x()+(axisRect.width()-labelBoxWidth)/2, origin.y()+margin, labelBoxWidth, labelBounds.height(), flags, label);
   }
   
   // set selection boxes:
@@ -10088,7 +10151,7 @@ void QCPAxisPainterPrivate::draw(QCPPainter *painter)
     selTickLabelSize = -(QCPAxis::orientation(type) == Qt::Horizontal ? tickLabelsSize.height() : tickLabelsSize.width());
     selTickLabelOffset = -(qMax(tickLengthIn, subTickLengthIn)+tickLabelPadding);
   }
-  int selLabelSize = labelBounds.height();
+  int selLabelSize = (QCPAxis::orientation(type) == Qt::Vertical && labelOrientation == Qt::Horizontal) ? labelBoxWidth : labelBounds.height();
   int selLabelOffset = qMax(tickLengthOut, subTickLengthOut)+(!tickLabels.isEmpty() && tickLabelSide == QCPAxis::lsOutside ? tickLabelPadding+selTickLabelSize : 0)+labelPadding;
   if (type == QCPAxis::atLeft)
   {
@@ -10152,16 +10215,25 @@ int QCPAxisPainterPrivate::size()
     }
   }
   
-  // calculate size of axis label (only height needed, because left/right labels are rotated by 90 degrees):
+  // calculate size of axis label (horizontally drawn left/right labels need their width, all others their height):
   if (!label.isEmpty())
   {
-    QFontMetrics fontMetrics(labelFont);
-    QRect bounds;
-    bounds = fontMetrics.boundingRect(0, 0, 0, 0, Qt::TextDontClip | Qt::AlignHCenter | Qt::AlignVCenter, label);
-    result += bounds.height() + labelPadding;
+    QSize bounds = labelSize();
+    if (QCPAxis::orientation(type) == Qt::Vertical && labelOrientation == Qt::Horizontal)
+      result += (labelWrapWidth > 0 ? labelWrapWidth : bounds.width()) + labelPadding;
+    else
+      result += bounds.height() + labelPadding;
   }
 
   return result;
+}
+
+QSize QCPAxisPainterPrivate::labelSize() const
+{
+  QFontMetrics fontMetrics(labelFont);
+  if (labelWrapWidth > 0)
+    return fontMetrics.boundingRect(0, 0, labelWrapWidth, fontMetrics.height()*(label.size()+1), Qt::TextWordWrap | Qt::TextDontClip, label).size();
+  return fontMetrics.boundingRect(0, 0, 0, 0, Qt::TextDontClip, label).size();
 }
 
 /*! \internal
