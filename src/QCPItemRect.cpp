@@ -35,7 +35,8 @@ QCPItemRect::QCPItemRect(QCustomPlot *parentPlot) :
   right(createAnchor(QLatin1String("right"), aiRight)),
   bottom(createAnchor(QLatin1String("bottom"), aiBottom)),
   bottomLeft(createAnchor(QLatin1String("bottomLeft"), aiBottomLeft)),
-  left(createAnchor(QLatin1String("left"), aiLeft))
+  left(createAnchor(QLatin1String("left"), aiLeft)),
+  center(createAnchor(QLatin1String("center"), aiCenter))
 {
   topLeft->setCoords(0, 1);
   bottomRight->setCoords(1, 0);
@@ -134,6 +135,7 @@ QPointF QCPItemRect::anchorPixelPosition(int anchorId) const
     case aiBottom:      return (rect.bottomLeft()+rect.bottomRight())*0.5;
     case aiBottomLeft:  return rect.bottomLeft();
     case aiLeft:        return (rect.topLeft()+rect.bottomLeft())*0.5;
+	case aiCenter:      return rect.center();
   }
   
   qDebug() << Q_FUNC_INFO << "invalid anchorId" << anchorId;
