@@ -27,7 +27,12 @@
 #define AXISTAG_H
 
 #include <QObject>
-#include "qcustomplot.h"
+#include "QCustomPlot.h"
+#include "QCPItemLine.h"
+#include "QCPItemPosition.h"
+#include "QCPItemText.h"
+#include "QCPItemTracer.h"
+#include "QCPLineEnding.h"
 
 class AxisTag : public QObject
 {

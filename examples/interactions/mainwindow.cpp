@@ -1,5 +1,11 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include "QCPAxisRect.h"
+#include "QCPGraph.h"
+#include "QCPLegend.h"
+#include "QCPPlottableLegendItem.h"
+#include "QCPScatterStyle.h"
+#include "QCPTextElement.h"
 
 MainWindow::MainWindow(QWidget *parent) :
   QMainWindow(parent),

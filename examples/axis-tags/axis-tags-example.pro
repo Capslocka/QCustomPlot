@@ -8,17 +8,17 @@ lessThan(QT_MAJOR_VERSION, 5): QMAKE_CXXFLAGS += -std=c++11
 TARGET = axis-tags-example
 TEMPLATE = app
 
-INCLUDEPATH += ../../
+INCLUDEPATH += ../../src
 SOURCES += \
         main.cpp \
         mainwindow.cpp \
-    ../../qcustomplot.cpp \
-    axistag.cpp
+    axistag.cpp \
+    $$files(../../src/*.cpp)
 
 HEADERS += \
         mainwindow.h \
-    ../../qcustomplot.h \
-    axistag.h
+    axistag.h \
+    $$files(../../src/*.h)
 
 FORMS += \
         mainwindow.ui

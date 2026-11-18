@@ -15,11 +15,13 @@ TARGET = scrollbar-axis-range-control
 TEMPLATE = app
 
 
+INCLUDEPATH += ../../src
+
 SOURCES += main.cpp\
         mainwindow.cpp \
-    ../../qcustomplot.cpp
+    $$files(../../src/*.cpp)
 
 HEADERS  += mainwindow.h \
-    ../../qcustomplot.h
+    $$files(../../src/*.h)
 
 FORMS    += mainwindow.ui

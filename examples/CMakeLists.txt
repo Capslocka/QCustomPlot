@@ -1,11 +1,9 @@
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 
-# The .ui files promote QCustomPlot with header path "../../qcustomplot.h".
-# AUTOUIC writes ui_*.h into <target>_autogen/include inside this binary
-# directory; exposing this directory lets that relative include resolve to
-# <binary>/../../qcustomplot.h, i.e. the repository root.
-set(QCUSTOMPLOT_UI_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR})
+# The .ui files promote QCustomPlot with the plain header "QCustomPlot.h";
+# the QCustomPlot target exports the src directory, so the generated
+# ui_*.h files resolve it through the target's include directories.
 
 add_executable(axis-tags-example
   axis-tags/main.cpp
@@ -24,7 +22,6 @@ add_executable(interaction-example
   interactions/mainwindow.ui
 )
 target_link_libraries(interaction-example PRIVATE QCustomPlot::QCustomPlot)
-target_include_directories(interaction-example PRIVATE ${QCUSTOMPLOT_UI_INCLUDE_DIRS})
 
 add_executable(plot-examples
   plots/main.cpp
@@ -33,7 +30,6 @@ add_executable(plot-examples
   plots/mainwindow.ui
 )
 target_link_libraries(plot-examples PRIVATE QCustomPlot::QCustomPlot)
-target_include_directories(plot-examples PRIVATE ${QCUSTOMPLOT_UI_INCLUDE_DIRS})
 
 # The plots example loads its images relative to the working directory,
 # so keep them next to the executable.
@@ -53,7 +49,6 @@ add_executable(scrollbar-axis-range-control
   scrollbar-axis-range-control/mainwindow.ui
 )
 target_link_libraries(scrollbar-axis-range-control PRIVATE QCustomPlot::QCustomPlot)
-target_include_directories(scrollbar-axis-range-control PRIVATE ${QCUSTOMPLOT_UI_INCLUDE_DIRS})
 
 add_executable(text-document-integration
   text-document-integration/main.cpp
@@ -64,4 +59,10 @@ add_executable(text-document-integration
   text-document-integration/qcpdocumentobject.h
 )
 target_link_libraries(text-document-integration PRIVATE QCustomPlot::QCustomPlot)
-target_include_directories(text-document-integration PRIVATE ${QCUSTOMPLOT_UI_INCLUDE_DIRS})
+
+add_executable(sync-demo-example
+  sync-demo/main.cpp
+  sync-demo/mainwindow.cpp
+  sync-demo/mainwindow.h
+)
+target_link_libraries(sync-demo-example PRIVATE QCustomPlot::QCustomPlot)

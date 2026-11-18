@@ -5,13 +5,25 @@ project(QCustomPlot VERSION 2.1.1 LANGUAGES CXX)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-option(QCUSTOMPLOT_BUILD_EXAMPLES "Build the QCustomPlot example applications" OFF)
+option(QCUSTOMPLOT_BUILD_EXAMPLES "Build the QCustomPlot example applications" ON)
 option(QCUSTOMPLOT_USE_OPENGL "Enable OpenGL hardware acceleration (defines QCUSTOMPLOT_USE_OPENGL)" OFF)
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Gui Widgets PrintSupport)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Widgets PrintSupport)
 
-add_library(QCustomPlot qcustomplot.cpp qcustomplot.h)
+include(${CMAKE_CURRENT_SOURCE_DIR}/src/QCustomPlotSources.cmake)
+set(QCUSTOMPLOT_TOOLS_SOURCES
+  src/tools/QCPSyncer.cpp
+)
+set(QCUSTOMPLOT_TOOLS_HEADERS
+  src/tools/QCPSyncer.h
+  src/tools/QCPSyncer_p.h
+)
+
+add_library(QCustomPlot
+  ${QCUSTOMPLOT_SOURCES} ${QCUSTOMPLOT_HEADERS}
+  ${QCUSTOMPLOT_TOOLS_SOURCES} ${QCUSTOMPLOT_TOOLS_HEADERS}
+)
 add_library(QCustomPlot::QCustomPlot ALIAS QCustomPlot)
 
 target_compile_features(QCustomPlot PUBLIC cxx_std_11)
@@ -26,7 +38,8 @@ target_link_libraries(QCustomPlot
 
 target_include_directories(QCustomPlot
   PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/tools>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/QCustomPlot>
 )
 
@@ -63,7 +76,8 @@ install(TARGETS QCustomPlot
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-install(FILES qcustomplot.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/QCustomPlot)
+install(FILES ${QCUSTOMPLOT_HEADERS} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/QCustomPlot)
+install(FILES src/tools/QCPSyncer.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/QCustomPlot)
 
 install(EXPORT QCustomPlotTargets
   FILE QCustomPlotTargets.cmake

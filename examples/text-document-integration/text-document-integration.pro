@@ -15,13 +15,15 @@ TARGET = text-document-integration
 TEMPLATE = app
 
 
+INCLUDEPATH += ../../src
+
 SOURCES += main.cpp\
         mainwindow.cpp \
     qcpdocumentobject.cpp \
-    ../../qcustomplot.cpp
+    $$files(../../src/*.cpp)
 
 HEADERS  += mainwindow.h \
     qcpdocumentobject.h \
-    ../../qcustomplot.h
+    $$files(../../src/*.h)
 
 FORMS    += mainwindow.ui

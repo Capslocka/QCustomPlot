@@ -25,6 +25,7 @@
 
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include "QCPGraph.h"
 
 MainWindow::MainWindow(QWidget *parent) :
   QMainWindow(parent),
