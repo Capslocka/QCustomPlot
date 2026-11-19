@@ -21,6 +21,7 @@ class QCP_LIB_DECL QCPItemRect : public QCPAbstractItem
   Q_PROPERTY(QPen selectedPen READ selectedPen WRITE setSelectedPen)
   Q_PROPERTY(QBrush brush READ brush WRITE setBrush)
   Q_PROPERTY(QBrush selectedBrush READ selectedBrush WRITE setSelectedBrush)
+  Q_PROPERTY(double cornerRadius READ cornerRadius WRITE setCornerRadius)
   /// \endcond
 public:
   explicit QCPItemRect(QCustomPlot *parentPlot);
@@ -31,12 +32,15 @@ public:
   QPen selectedPen() const { return mSelectedPen; }
   QBrush brush() const { return mBrush; }
   QBrush selectedBrush() const { return mSelectedBrush; }
+  //! Corner radius in pixels; 0 draws sharp corners.
+  double cornerRadius() const { return mCornerRadius; }
   
   // setters;
   void setPen(const QPen &pen);
   void setSelectedPen(const QPen &pen);
   void setBrush(const QBrush &brush);
   void setSelectedBrush(const QBrush &brush);
+  void setCornerRadius(double radius);
   
   // reimplemented virtual methods:
   virtual double selectTest(const QPointF &pos, bool onlySelectable, QVariant *details=nullptr) const Q_DECL_OVERRIDE;
@@ -58,6 +62,7 @@ protected:
   // property members:
   QPen mPen, mSelectedPen;
   QBrush mBrush, mSelectedBrush;
+  double mCornerRadius;
   
   // reimplemented virtual methods:
   virtual void draw(QCPPainter *painter) Q_DECL_OVERRIDE;

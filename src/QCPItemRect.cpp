@@ -36,7 +36,8 @@ QCPItemRect::QCPItemRect(QCustomPlot *parentPlot) :
   bottom(createAnchor(QLatin1String("bottom"), aiBottom)),
   bottomLeft(createAnchor(QLatin1String("bottomLeft"), aiBottomLeft)),
   left(createAnchor(QLatin1String("left"), aiLeft)),
-  center(createAnchor(QLatin1String("center"), aiCenter))
+  center(createAnchor(QLatin1String("center"), aiCenter)),
+  mCornerRadius(0)
 {
   topLeft->setCoords(0, 1);
   bottomRight->setCoords(1, 0);
@@ -93,6 +94,17 @@ void QCPItemRect::setSelectedBrush(const QBrush &brush)
   mSelectedBrush = brush;
 }
 
+/*!
+  Sets the corner radius (in pixels) used to draw the rectangle. A radius of 0 (the default)
+  draws sharp corners.
+  
+  \see cornerRadius
+*/
+void QCPItemRect::setCornerRadius(double radius)
+{
+  mCornerRadius = radius > 0 ? radius : 0;
+}
+
 /* inherits documentation from base class */
 double QCPItemRect::selectTest(const QPointF &pos, bool onlySelectable, QVariant *details) const
 {
@@ -119,7 +131,10 @@ void QCPItemRect::draw(QCPPainter *painter)
   {
     painter->setPen(mainPen());
     painter->setBrush(mainBrush());
-    painter->drawRect(rect);
+    if (mCornerRadius > 0)
+      painter->drawRoundedRect(rect, mCornerRadius, mCornerRadius);
+    else
+      painter->drawRect(rect);
   }
 }
 
