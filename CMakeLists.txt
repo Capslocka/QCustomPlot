@@ -14,10 +14,11 @@ find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Widgets PrintSup
 include(${CMAKE_CURRENT_SOURCE_DIR}/src/QCustomPlotSources.cmake)
 set(QCUSTOMPLOT_TOOLS_SOURCES
   src/tools/QCPSyncer.cpp
+  src/tools/QCPRuler.cpp
 )
 set(QCUSTOMPLOT_TOOLS_HEADERS
   src/tools/QCPSyncer.h
-  src/tools/QCPSyncer_p.h
+  src/tools/QCPRuler.h
 )
 
 add_library(QCustomPlot
@@ -77,7 +78,11 @@ install(TARGETS QCustomPlot
 )
 
 install(FILES ${QCUSTOMPLOT_HEADERS} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/QCustomPlot)
-install(FILES src/tools/QCPSyncer.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/QCustomPlot)
+install(FILES
+  src/tools/QCPSyncer.h
+  src/tools/QCPRuler.h
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/QCustomPlot
+)
 
 install(EXPORT QCustomPlotTargets
   FILE QCustomPlotTargets.cmake

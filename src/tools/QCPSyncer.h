@@ -7,21 +7,33 @@
 #define QCPSYNCER_H
 
 #include "QCPGlobal.h"
+#include "QCPRuler.h"
 #include "QCustomPlot.h"
 #include "QCPAxis.h"
 #include "QCPAxisRect.h"
 #include "QCPGraph.h"
 
+#include <QColor>
+#include <QHash>
+#include <QList>
+#include <QPointer>
+
 #include <functional>
 
-class QCPRuler;
-
 /*!
-  Synchronizes the horizontal (key) axis ranges of several QCustomPlot widgets and provides a
-  draggable vertical ruler whose intersection with every graph is read out with a tracer and a
-  text label.
+  Synchronizes the horizontal (key) axis ranges of several QCustomPlot widgets and provides any
+  number of draggable vertical rulers whose intersections with every graph are read out with a
+  tracer and a text label.
 
-  Ruler x-axis value labels are shown in a single plot only, see setLabelPlot.
+  All bottom axes of all axis rects of the registered plots take part in the synchronization. A
+  global key range limit can be configured; ranges are clamped to it while preserving their width
+  (whole-range requests beyond a boundary are shifted back in, oversized requests fill the limit).
+
+  Ruler interaction (hover cursor, left-button dragging of the nearest ruler) is handled by an
+  event filter. Adding and removing rulers, keyboard nudging and any application specific policy
+  stay with the host, which can query rulerAt() for hit testing.
+
+  Ruler x-axis value labels are drawn in one designated plot only, see setLabelPlot().
 */
 class QCP_LIB_DECL QCPSyncer : public QObject
 {
@@ -30,37 +42,65 @@ public:
   explicit QCPSyncer(QObject *parent = nullptr);
   ~QCPSyncer() override;
 
+  // plot registration:
   void addPlot(QCustomPlot *plot);
   void removePlot(QCustomPlot *plot);
   QList<QCustomPlot*> plots() const;
-
-  //! An empty list restores the default: the bottom axis of every axis rect of every plot.
-  void setSyncedAxes(const QList<QCPAxis*> &axes);
+  //! Re-attaches ruler items and axis connections after axis rects and graphs were rebuilt.
+  void rebuild();
   QList<QCPAxis*> syncedAxes() const;
 
-  void setRulerKey(double key);
-  double rulerKey() const;
-  void setRulerVisible(bool visible);
-  bool rulerVisible() const;
-  void setRulerPen(const QPen &pen);
-  QPen rulerPen() const;
+  // key range limit:
+  void setKeyRangeLimit(const QCPRange &range);
+  void setKeyRangeLimit(double lower, double upper);
+  void clearKeyRangeLimit();
+  bool hasKeyRangeLimit() const;
+  QCPRange keyRangeLimit() const;
+  //! Broadcasts a range from outside (e.g. a scrollbar), applying the same clamp as user zoom/pan.
+  void syncXRange(const QCPRange &range);
 
+  // rulers:
+  void addRuler(int id, double key);
+  void removeRuler(int id);
+  void clearRulers();
+  bool hasRuler(int id) const;
+  QList<int> rulerIds() const;
+  double rulerKey(int id) const;
+  void setRulerKey(int id, double key);
+  void setRulersVisible(bool visible);
+  bool rulersVisible() const;
+  void setActiveRuler(int id);
+  int activeRulerId() const;
+  //! Default colors cycle through a nine color palette; override per ruler with setRulerColor.
+  QColor rulerColor(int id) const;
+  void setRulerColor(int id, const QColor &color);
+  //! Returns the id of the ruler whose line is closest to \a pos (within the grab radius), or -1.
+  int rulerAt(QCustomPlot *plot, const QPoint &pos) const;
+  //! Returns the ruler registered under \a id, or nullptr if there is none.
+  QCPRuler *ruler(int id) const;
+  //! Returns all rulers in creation order.
+  QList<QCPRuler*> rulers() const;
+
+  // readouts:
   void setReadoutEnabled(QCPGraph *graph, bool enabled);
   bool readoutEnabled(QCPGraph *graph) const;
   void rescanGraphs();
+  //! Formats the interpolated graph value at a ruler key. Empty function restores the default.
+  void setReadoutFormatter(std::function<QString(double)> formatter);
 
+  // x value label:
   void setLabelPlot(QCustomPlot *plot);
   QCustomPlot *labelPlot() const;
   void setLabelAxisRect(QCPAxisRect *rect);
   QCPAxisRect *labelAxisRect() const;
-
-  //! Formats the interpolated graph value at the ruler key. Empty function restores the default.
-  void setReadoutFormatter(std::function<QString(double)> formatter);
+  void setXLabelPlacement(QCPRuler::XLabelPlacement placement);
+  QCPRuler::XLabelPlacement xLabelPlacement() const;
   //! Formats the ruler x value. Empty function restores the default (datetime tickers use their format).
   void setXLabelFormatter(std::function<QString(double)> formatter);
 
 signals:
-  void rulerKeyChanged(double key);
+  void rulerKeyChanged(int id, double key);
+  void rulerActivated(int id);
   void syncedRangeChanged(const QCPRange &range);
 
 protected:
@@ -76,24 +116,34 @@ private:
   void rebuildConnections();
   void connectAxis(QCPAxis *axis);
   void disconnectAxis(QCPAxis *axis);
+  QCPRange clampRange(const QCPRange &range) const;
   void applyRange(const QCPRange &range, QCPAxis *source);
   void updateDragCursor(QCustomPlot *plot, const QPoint &pos);
   QCPAxis *axisAt(QCustomPlot *plot, const QPoint &pos) const;
-  void setRulerKeyInternal(double key);
+  void setRulerKeyInternal(int id, double key);
+  void refreshAll();
   void queueReplotAll();
+  static QColor defaultRulerColor(int id);
 
   QList<QCustomPlot*> mPlots;
-  QList<QCPAxis*> mExplicitSyncedAxes;
-  QList<QCPAxis*> mConnectedAxes;
+  QList<QPointer<QCPAxis>> mConnectedAxes;
   bool mSyncing;
+  bool mHasKeyLimit;
+  QCPRange mKeyLimit;
+
+  QHash<int, QCPRuler*> mRulers;
+  QList<int> mRulerOrder;
+  int mActiveRulerId;
+  bool mRulersVisible;
+
   QPointer<QCustomPlot> mLabelPlot;
   QPointer<QCPAxisRect> mLabelAxisRect;
+  QCPRuler::XLabelPlacement mXLabelPlacement;
   std::function<QString(double)> mReadoutFormatter;
   std::function<QString(double)> mXLabelFormatter;
 
-  QCPRuler *mRuler;
-  bool mKeyInitialized;
   bool mDragging;
+  int mDragRulerId;
   QPointer<QCustomPlot> mDragPlot;
   QPointer<QCPAxis> mDragAxis;
 };

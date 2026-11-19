@@ -45,7 +45,8 @@ MainWindow::MainWindow(QWidget *parent) :
 
   setCentralWidget(central);
   mSyncer->setLabelPlot(mPlots.first());
-  mSyncer->setRulerKey(5.0);
+  mSyncer->addRuler(1, 5.0);
+  mSyncer->setActiveRuler(1);
 
   connect(&mTimer, &QTimer::timeout, this, &MainWindow::updateData);
   mTimer.start(50);

@@ -3,11 +3,8 @@
    Licensed under the GNU General Public License v3, see GPL.txt.
    Automatically split from the amalgamated qcustomplot.h/.cpp; keep code in sync. */
 
-#include "QCPSyncer_p.h"
-#include "QCPAxisTickerDateTime.h"
-#include "QCPLayer.h"
+#include "QCPSyncer.h"
 
-#include <QDateTime>
 #include <QEvent>
 #include <QMouseEvent>
 #include <QtGlobal>
@@ -17,409 +14,12 @@
 namespace
 {
 const int RULER_GRAB_RADIUS = 6;
-const int READOUT_LABEL_OFFSET = 8;
 
 bool rangesEqual(const QCPRange &a, const QCPRange &b)
 {
   return qFuzzyCompare(a.lower, b.lower) && qFuzzyCompare(a.upper, b.upper);
 }
-
-QString formatNumber(double value)
-{
-  return QString::number(value, 'g', 10);
-}
 } // namespace
-
-// ---------------------------------------------------------------------------
-// QCPRuler
-// ---------------------------------------------------------------------------
-
-QCPRuler::QCPRuler() :
-  mKey(0),
-  mVisible(true),
-  mPen(QPen(Qt::red, 0, Qt::DashLine)),
-  mXLabelItem(nullptr)
-{
-}
-
-QCPRuler::~QCPRuler()
-{
-  QList<QCustomPlot*> plots = mItems.keys();
-  for (QCustomPlot *plot : plots)
-  {
-    if (plot)
-      clearPlotItems(plot);
-  }
-  discardLabelItem();
-}
-
-void QCPRuler::setKey(double key)
-{
-  mKey = key;
-}
-
-void QCPRuler::setVisible(bool visible)
-{
-  mVisible = visible;
-}
-
-void QCPRuler::setPen(const QPen &pen)
-{
-  mPen = pen;
-}
-
-void QCPRuler::setReadoutEnabled(QCPGraph *graph, bool enabled)
-{
-  if (!graph)
-    return;
-  if (enabled)
-    mDisabledGraphs.remove(graph);
-  else
-    mDisabledGraphs.insert(graph, true);
-}
-
-bool QCPRuler::readoutEnabled(QCPGraph *graph) const
-{
-  return graph && !mDisabledGraphs.contains(graph);
-}
-
-void QCPRuler::setReadoutFormatter(std::function<QString(double)> formatter)
-{
-  mReadoutFormatter = formatter;
-}
-
-void QCPRuler::setXLabelFormatter(std::function<QString(double)> formatter)
-{
-  mXLabelFormatter = formatter;
-}
-
-void QCPRuler::setLabelPlot(QCustomPlot *plot)
-{
-  if (mLabelPlot == plot)
-    return;
-  discardLabelItem();
-  mLabelPlot = plot;
-  mLabelAxisRect = nullptr;
-  ensureLabelItem();
-}
-
-void QCPRuler::setLabelAxisRect(QCPAxisRect *rect)
-{
-  mLabelAxisRect = rect;
-  ensureLabelItem();
-}
-
-void QCPRuler::attachPlot(QCustomPlot *plot)
-{
-  if (!plot || mItems.contains(plot))
-    return;
-  mItems.insert(plot, PlotItems());
-  createPlotItems(plot);
-  if (!mLabelPlot)
-    setLabelPlot(plot);
-}
-
-void QCPRuler::detachPlot(QCustomPlot *plot)
-{
-  if (!plot || !mItems.contains(plot))
-    return;
-  clearPlotItems(plot);
-  mItems.remove(plot);
-  if (mLabelPlot == plot)
-  {
-    mXLabelItem = nullptr;
-    mLabelPlot = nullptr;
-    mLabelAxisRect = nullptr;
-  }
-}
-
-void QCPRuler::forgetPlot(QCustomPlot *plot)
-{
-  // The plot is already being destroyed, so its items must not be touched any more.
-  mItems.remove(plot);
-  if (mLabelPlot == plot)
-  {
-    mXLabelItem = nullptr;
-    mLabelPlot = nullptr;
-    mLabelAxisRect = nullptr;
-  }
-}
-
-void QCPRuler::rescanPlot(QCustomPlot *plot)
-{
-  if (!plot || !mItems.contains(plot))
-    return;
-  clearReadoutItems(plot);
-  PlotItems &items = mItems[plot];
-  for (int i = 0; i < plot->graphCount(); ++i)
-  {
-    QCPGraph *graph = plot->graph(i);
-    QCPItemTracer *tracer = new QCPItemTracer(plot);
-    tracer->setLayer("overlay");
-    tracer->setClipToAxisRect(false);
-    tracer->setGraph(graph);
-    tracer->setGraphKey(mKey);
-    tracer->setInterpolating(true);
-    tracer->setStyle(QCPItemTracer::tsCircle);
-    tracer->setSize(8);
-
-    QCPItemText *label = new QCPItemText(plot);
-    label->setLayer("overlay");
-    label->setClipToAxisRect(false);
-    label->setPositionAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    label->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    label->setPadding(QMargins(3, 0, 3, 0));
-    label->position->setParentAnchor(tracer->position);
-    label->position->setCoords(READOUT_LABEL_OFFSET, 0);
-
-    items.tracers.insert(graph, tracer);
-    items.labels.insert(graph, label);
-  }
-  updatePlotVisuals(plot);
-}
-
-void QCPRuler::rescanAll()
-{
-  const QList<QCustomPlot*> plots = mItems.keys();
-  for (QCustomPlot *plot : plots)
-    rescanPlot(plot);
-}
-
-void QCPRuler::refreshPlot(QCustomPlot *plot)
-{
-  if (plot && mItems.contains(plot))
-    updatePlotVisuals(plot);
-}
-
-void QCPRuler::refresh()
-{
-  const QList<QCustomPlot*> plots = mItems.keys();
-  for (QCustomPlot *plot : plots)
-    updatePlotVisuals(plot);
-
-  if (mXLabelItem)
-  {
-    QCPAxisRect *rect = mLabelAxisRect;
-    if (!rect && mLabelPlot)
-      rect = mLabelPlot->axisRect();
-    QCPAxis *axis = rect ? rect->axis(QCPAxis::atBottom) : nullptr;
-    if (rect && axis)
-    {
-      const double x = axis->coordToPixel(mKey);
-      const bool inside = mVisible && x >= rect->left() && x <= rect->right();
-      mXLabelItem->setVisible(inside);
-      if (inside)
-      {
-        mXLabelItem->setText(xLabelText(mKey, axis));
-        mXLabelItem->position->setCoords(x, rect->bottom() + axis->offset() + 3);
-        mXLabelItem->setPen(QPen(mPen.color()));
-      }
-    } else if (mXLabelItem)
-    {
-      mXLabelItem->setVisible(false);
-    }
-  }
-}
-
-double QCPRuler::interpolate(QCPGraph *graph, bool *ok) const
-{
-  if (ok)
-    *ok = false;
-  if (!graph || graph->data().isNull() || graph->data()->isEmpty())
-    return 0;
-
-  const QCPGraphDataContainer &container = *graph->data();
-  QCPGraphDataContainer::const_iterator begin = container.constBegin();
-  QCPGraphDataContainer::const_iterator last = container.constEnd() - 1;
-  if (mKey < begin->key || mKey > last->key)
-    return 0;
-
-  QCPGraphDataContainer::const_iterator it = container.findBegin(mKey);
-  double value = 0;
-  if (it == container.constEnd())
-  {
-    value = last->value;
-  } else if (it == begin || qFuzzyCompare(it->key, mKey))
-  {
-    value = it->value;
-  } else
-  {
-    QCPGraphDataContainer::const_iterator prev = it - 1;
-    const double span = it->key - prev->key;
-    const double t = span > 0 ? (mKey - prev->key) / span : 0;
-    value = prev->value + t * (it->value - prev->value);
-  }
-  if (ok)
-    *ok = true;
-  return value;
-}
-
-void QCPRuler::createPlotItems(QCustomPlot *plot)
-{
-  PlotItems &items = mItems[plot];
-  for (int i = 0; i < plot->axisRectCount(); ++i)
-  {
-    QCPAxisRect *rect = plot->axisRect(i);
-    QCPAxis *axis = rect->axis(QCPAxis::atBottom);
-    if (!axis)
-      continue;
-    QCPItemStraightLine *line = new QCPItemStraightLine(plot);
-    line->setLayer("overlay");
-    line->setClipToAxisRect(true);
-    line->setClipAxisRect(rect);
-    line->setPen(mPen);
-    line->point1->setType(QCPItemPosition::ptAxisRectRatio);
-    line->point1->setAxisRect(rect);
-    line->point2->setType(QCPItemPosition::ptAxisRectRatio);
-    line->point2->setAxisRect(rect);
-    line->point1->setCoords(0, 0);
-    line->point2->setCoords(0, 1);
-    items.lines.append(line);
-    items.lineRects.append(rect);
-  }
-  rescanPlot(plot);
-}
-
-void QCPRuler::clearReadoutItems(QCustomPlot *plot)
-{
-  PlotItems &items = mItems[plot];
-  for (QCPItemText *label : items.labels)
-  {
-    if (label)
-    {
-      label->position->setParentAnchor(nullptr);
-      plot->removeItem(label); // deletes the item
-    }
-  }
-  for (QCPItemTracer *tracer : items.tracers)
-  {
-    if (tracer)
-    {
-      plot->removeItem(tracer); // deletes the item
-    }
-  }
-  items.tracers.clear();
-  items.labels.clear();
-}
-
-void QCPRuler::clearPlotItems(QCustomPlot *plot)
-{
-  PlotItems &items = mItems[plot];
-  clearReadoutItems(plot);
-  for (QCPItemStraightLine *line : items.lines)
-  {
-    if (line)
-    {
-      plot->removeItem(line); // deletes the item
-    }
-  }
-  items.lines.clear();
-  items.lineRects.clear();
-}
-
-void QCPRuler::ensureLabelItem()
-{
-  if (mXLabelItem || !mLabelPlot)
-    return;
-  mXLabelItem = new QCPItemText(mLabelPlot);
-  mXLabelItem->setLayer("overlay");
-  mXLabelItem->setClipToAxisRect(false);
-  mXLabelItem->setPositionAlignment(Qt::AlignHCenter | Qt::AlignTop);
-  mXLabelItem->setTextAlignment(Qt::AlignHCenter | Qt::AlignTop);
-  mXLabelItem->setPadding(QMargins(3, 1, 3, 1));
-  mXLabelItem->setBrush(QBrush(Qt::white));
-  mXLabelItem->position->setType(QCPItemPosition::ptAbsolute);
-  mXLabelItem->setVisible(false);
-}
-
-void QCPRuler::discardLabelItem()
-{
-  if (mXLabelItem)
-  {
-    QCustomPlot *plot = mXLabelItem->parentPlot();
-    if (plot)
-      plot->removeItem(mXLabelItem); // deletes the item
-    mXLabelItem = nullptr;
-  }
-}
-
-void QCPRuler::updatePlotVisuals(QCustomPlot *plot)
-{
-  if (!mItems.contains(plot))
-    return;
-  PlotItems &items = mItems[plot];
-
-  for (int i = 0; i < items.lines.size(); ++i)
-  {
-    QCPItemStraightLine *line = items.lines.at(i);
-    QCPAxisRect *rect = items.lineRects.at(i);
-    QCPAxis *axis = rect ? rect->axis(QCPAxis::atBottom) : nullptr;
-    if (!line || !rect || !axis)
-      continue;
-    const double ratio = (axis->coordToPixel(mKey) - rect->left()) / qMax(1, rect->width());
-    line->point1->setCoords(ratio, 0);
-    line->point2->setCoords(ratio, 1);
-    line->setPen(mPen);
-    line->setVisible(mVisible);
-  }
-
-  const QList<QCPGraph*> graphs = items.tracers.keys();
-  for (QCPGraph *graph : graphs)
-  {
-    QCPItemTracer *tracer = items.tracers.value(graph);
-    QCPItemText *label = items.labels.value(graph);
-    if (!tracer || !label)
-      continue;
-
-    bool inRange = false;
-    interpolate(graph, &inRange);
-    const bool show = mVisible && inRange && readoutEnabled(graph);
-
-    tracer->setGraphKey(mKey);
-    tracer->setVisible(show);
-    tracer->setPen(QPen(graph->pen().color()));
-
-    label->setVisible(show);
-    if (show)
-    {
-      label->setText(readoutText(graph, &inRange));
-      label->setPen(QPen(graph->pen().color()));
-      label->setBrush(QBrush(QColor(255, 255, 255, 220)));
-      label->position->setCoords(READOUT_LABEL_OFFSET, 0);
-    }
-  }
-}
-
-QString QCPRuler::readoutText(QCPGraph *graph, bool *visible) const
-{
-  if (!graph || !visible || !*visible)
-    return QString();
-  QString text;
-  if (mReadoutFormatter)
-  {
-    text = mReadoutFormatter(interpolate(graph, visible));
-  } else
-  {
-    text = formatNumber(interpolate(graph, visible));
-    const QString name = graph->name();
-    if (!name.isEmpty())
-      text = name + ": " + text;
-  }
-  return text;
-}
-
-QString QCPRuler::xLabelText(double key, QCPAxis *axis) const
-{
-  if (mXLabelFormatter)
-    return mXLabelFormatter(key);
-  if (axis)
-  {
-    QCPAxisTickerDateTime *dateTimeTicker = dynamic_cast<QCPAxisTickerDateTime*>(axis->ticker().data());
-    if (dateTimeTicker)
-      return QCPAxisTickerDateTime::keyToDateTime(key).toString(dateTimeTicker->dateTimeFormat());
-  }
-  return QStringLiteral("x = ") + formatNumber(key);
-}
 
 // ---------------------------------------------------------------------------
 // QCPSyncer
@@ -428,9 +28,13 @@ QString QCPRuler::xLabelText(double key, QCPAxis *axis) const
 QCPSyncer::QCPSyncer(QObject *parent) :
   QObject(parent),
   mSyncing(false),
-  mRuler(new QCPRuler),
-  mKeyInitialized(false),
-  mDragging(false)
+  mHasKeyLimit(false),
+  mKeyLimit(0, 0),
+  mActiveRulerId(-1),
+  mRulersVisible(true),
+  mXLabelPlacement(QCPRuler::xlpBelowAxis),
+  mDragging(false),
+  mDragRulerId(-1)
 {
 }
 
@@ -442,56 +46,98 @@ QCPSyncer::~QCPSyncer()
     if (plot)
     {
       plot->removeEventFilter(this);
-      mRuler->detachPlot(plot);
+      for (QCPRuler *ruler : mRulers)
+        ruler->detachPlot(plot);
     }
   }
-  delete mRuler;
+  qDeleteAll(mRulers);
+  mRulers.clear();
+}
+
+QColor QCPSyncer::defaultRulerColor(int id)
+{
+  static const QColor palette[] = {
+    QColor(QStringLiteral("#E53935")), // red
+    QColor(QStringLiteral("#1E88E5")), // blue
+    QColor(QStringLiteral("#43A047")), // green
+    QColor(QStringLiteral("#FB8C00")), // orange
+    QColor(QStringLiteral("#8E24AA")), // purple
+    QColor(QStringLiteral("#00ACC1")), // cyan
+    QColor(QStringLiteral("#D81B60")), // magenta
+    QColor(QStringLiteral("#FDD835")), // yellow
+    QColor(QStringLiteral("#757575"))  // gray
+  };
+  const int count = int(sizeof(palette) / sizeof(palette[0]));
+  int index = (id - 1) % count;
+  if (index < 0)
+    index += count;
+  return palette[index];
 }
 
 void QCPSyncer::addPlot(QCustomPlot *plot)
 {
   if (!plot || mPlots.contains(plot))
     return;
+
+  QCPRange alignRange;
+  bool hasAlignRange = false;
+  {
+    const QList<QCPAxis*> axes = effectiveSyncedAxes();
+    if (!axes.isEmpty())
+    {
+      alignRange = axes.first()->range();
+      hasAlignRange = true;
+    }
+  }
+
   mPlots.append(plot);
   plot->installEventFilter(this);
   plot->setMouseTracking(true);
-  connect(plot, &QCustomPlot::beforeReplot, this, [this, plot]() {
-    mRuler->refreshPlot(plot);
+  connect(plot, &QCustomPlot::afterLayout, this, [this, plot]() {
+    // afterLayout runs at the end of QCustomPlot::updateLayout() and before the layers
+    // are drawn into their paint buffers, and it already sees the fresh axis rect
+    // geometry. Refreshing here (instead of beforeReplot) keeps ruler items in sync on
+    // the very first replot after graphs are rebuilt or the plot is shown.
+    for (QCPRuler *ruler : mRulers)
+      ruler->refreshPlot(plot);
   });
   connect(plot, &QObject::destroyed, this, [this, plot]() {
-    if (mPlots.removeAll(plot) > 0)
+    mPlots.removeAll(plot);
+    mConnectedAxes.clear();
+    for (QCPRuler *ruler : mRulers)
+      ruler->forgetPlot(plot);
+    if (mLabelPlot == plot)
+      mLabelPlot = mPlots.isEmpty() ? nullptr : mPlots.first();
+    if (mDragPlot == plot)
     {
-      mConnectedAxes.clear();
-      mExplicitSyncedAxes.clear();
-      mRuler->forgetPlot(plot);
-      if (mLabelPlot == plot)
-        mLabelPlot = nullptr;
-      if (mDragPlot == plot)
-        mDragPlot = nullptr;
-      rebuildConnections();
+      mDragging = false;
+      mDragPlot = nullptr;
+      mDragAxis = nullptr;
+      mDragRulerId = -1;
     }
+    rebuildConnections();
+    if (mLabelPlot)
+      setLabelPlot(mLabelPlot);
+    refreshAll();
   });
 
-  mRuler->attachPlot(plot);
+  for (QCPRuler *ruler : mRulers)
+    ruler->attachPlot(plot);
   if (!mLabelPlot)
     mLabelPlot = plot;
-  mRuler->setLabelPlot(mLabelPlot);
-
-  const QList<QCPAxis*> axes = effectiveSyncedAxes();
-  QCPRange alignRange;
-  bool hasAlignRange = false;
-  for (QCPAxis *axis : axes)
+  if (mLabelPlot)
+    setLabelPlot(mLabelPlot);
+  if (mLabelAxisRect)
   {
-    if (axis->parentPlot() != plot)
-    {
-      alignRange = axis->range();
-      hasAlignRange = true;
-      break;
-    }
+    for (QCPRuler *ruler : mRulers)
+      ruler->setLabelAxisRect(mLabelAxisRect);
   }
+
+  rebuildConnections();
   if (hasAlignRange)
   {
     mSyncing = true;
+    const QList<QCPAxis*> axes = effectiveSyncedAxes();
     for (QCPAxis *axis : axes)
     {
       if (axis->parentPlot() == plot)
@@ -499,16 +145,7 @@ void QCPSyncer::addPlot(QCustomPlot *plot)
     }
     mSyncing = false;
   }
-
-  if (!mKeyInitialized && !axes.isEmpty())
-  {
-    const QCPRange range = axes.first()->range();
-    mRuler->setKey((range.lower + range.upper) * 0.5);
-    mKeyInitialized = true;
-  }
-
-  rebuildConnections();
-  mRuler->refresh();
+  refreshAll();
   queueReplotAll();
 }
 
@@ -517,20 +154,24 @@ void QCPSyncer::removePlot(QCustomPlot *plot)
   if (!plot || !mPlots.contains(plot))
     return;
   plot->removeEventFilter(this);
-  mRuler->detachPlot(plot);
+  for (QCPRuler *ruler : mRulers)
+    ruler->detachPlot(plot);
   mPlots.removeAll(plot);
   if (mLabelPlot == plot)
   {
     mLabelPlot = mPlots.isEmpty() ? nullptr : mPlots.first();
-    mRuler->setLabelPlot(mLabelPlot);
+    if (mLabelPlot)
+      setLabelPlot(mLabelPlot);
   }
   if (mDragPlot == plot)
   {
     mDragging = false;
     mDragPlot = nullptr;
     mDragAxis = nullptr;
+    mDragRulerId = -1;
   }
   rebuildConnections();
+  refreshAll();
   queueReplotAll();
 }
 
@@ -539,15 +180,34 @@ QList<QCustomPlot*> QCPSyncer::plots() const
   return mPlots;
 }
 
-void QCPSyncer::setSyncedAxes(const QList<QCPAxis*> &axes)
+void QCPSyncer::rebuild()
 {
-  mExplicitSyncedAxes.clear();
-  for (QCPAxis *axis : axes)
+  const QList<QCustomPlot*> plots = mPlots;
+  for (QCPRuler *ruler : mRulers)
   {
-    if (axis && mPlots.contains(axis->parentPlot()) && !mExplicitSyncedAxes.contains(axis))
-      mExplicitSyncedAxes.append(axis);
+    for (QCustomPlot *plot : plots)
+    {
+      if (plot)
+        ruler->detachPlot(plot);
+    }
   }
   rebuildConnections();
+  for (QCustomPlot *plot : plots)
+  {
+    if (!plot)
+      continue;
+    for (QCPRuler *ruler : mRulers)
+      ruler->attachPlot(plot);
+  }
+  for (QCPRuler *ruler : mRulers)
+  {
+    if (mLabelPlot)
+      ruler->setLabelPlot(mLabelPlot);
+    ruler->setLabelAxisRect(mLabelAxisRect);
+    ruler->setXLabelPlacement(mXLabelPlacement);
+    ruler->refresh();
+  }
+  queueReplotAll();
 }
 
 QList<QCPAxis*> QCPSyncer::syncedAxes() const
@@ -555,59 +215,242 @@ QList<QCPAxis*> QCPSyncer::syncedAxes() const
   return effectiveSyncedAxes();
 }
 
-void QCPSyncer::setRulerKey(double key)
+void QCPSyncer::setKeyRangeLimit(const QCPRange &range)
 {
-  mKeyInitialized = true;
-  setRulerKeyInternal(key);
+  mHasKeyLimit = true;
+  mKeyLimit = QCPRange(qMin(range.lower, range.upper), qMax(range.lower, range.upper));
+  const QList<QCPAxis*> axes = effectiveSyncedAxes();
+  if (!axes.isEmpty())
+    applyRange(axes.first()->range(), nullptr);
 }
 
-double QCPSyncer::rulerKey() const
+void QCPSyncer::setKeyRangeLimit(double lower, double upper)
 {
-  return mRuler->key();
+  setKeyRangeLimit(QCPRange(lower, upper));
 }
 
-void QCPSyncer::setRulerVisible(bool visible)
+void QCPSyncer::clearKeyRangeLimit()
 {
-  if (mRuler->visible() == visible)
+  mHasKeyLimit = false;
+}
+
+bool QCPSyncer::hasKeyRangeLimit() const
+{
+  return mHasKeyLimit;
+}
+
+QCPRange QCPSyncer::keyRangeLimit() const
+{
+  return mKeyLimit;
+}
+
+void QCPSyncer::syncXRange(const QCPRange &range)
+{
+  if (mSyncing)
     return;
-  mRuler->setVisible(visible);
-  mRuler->refresh();
+  applyRange(range, nullptr);
+}
+
+void QCPSyncer::addRuler(int id, double key)
+{
+  if (mRulers.contains(id))
+  {
+    setRulerKey(id, key);
+    return;
+  }
+
+  QCPRuler *ruler = new QCPRuler(id);
+  if (mHasKeyLimit)
+    key = clampRange(QCPRange(key, key)).lower;
+  ruler->setKey(key);
+  ruler->setColor(defaultRulerColor(id));
+  ruler->setVisible(mRulersVisible);
+  ruler->setReadoutFormatter(mReadoutFormatter);
+  ruler->setXLabelFormatter(mXLabelFormatter);
+  ruler->setXLabelPlacement(mXLabelPlacement);
+  for (QCustomPlot *plot : mPlots)
+  {
+    if (plot)
+      ruler->attachPlot(plot);
+  }
+  if (!mLabelPlot && !mPlots.isEmpty())
+    mLabelPlot = mPlots.first();
+  if (mLabelPlot)
+    ruler->setLabelPlot(mLabelPlot);
+  if (mLabelAxisRect)
+    ruler->setLabelAxisRect(mLabelAxisRect);
+
+  mRulers.insert(id, ruler);
+  mRulerOrder.append(id);
+  if (mActiveRulerId < 0)
+  {
+    mActiveRulerId = id;
+    ruler->setActive(true);
+  }
+  ruler->refresh();
   queueReplotAll();
 }
 
-bool QCPSyncer::rulerVisible() const
+void QCPSyncer::removeRuler(int id)
 {
-  return mRuler->visible();
-}
-
-void QCPSyncer::setRulerPen(const QPen &pen)
-{
-  mRuler->setPen(pen);
-  mRuler->refresh();
+  QCPRuler *ruler = mRulers.take(id);
+  if (!ruler)
+    return;
+  mRulerOrder.removeAll(id);
+  delete ruler;
+  if (mActiveRulerId == id)
+  {
+    mActiveRulerId = mRulerOrder.isEmpty() ? -1 : mRulerOrder.last();
+    if (mActiveRulerId >= 0)
+      setActiveRuler(mActiveRulerId);
+  }
+  refreshAll();
   queueReplotAll();
 }
 
-QPen QCPSyncer::rulerPen() const
+void QCPSyncer::clearRulers()
 {
-  return mRuler->pen();
+  qDeleteAll(mRulers);
+  mRulers.clear();
+  mRulerOrder.clear();
+  mActiveRulerId = -1;
+  queueReplotAll();
+}
+
+bool QCPSyncer::hasRuler(int id) const
+{
+  return mRulers.contains(id);
+}
+
+QList<int> QCPSyncer::rulerIds() const
+{
+  return mRulerOrder;
+}
+
+double QCPSyncer::rulerKey(int id) const
+{
+  QCPRuler *ruler = mRulers.value(id);
+  return ruler ? ruler->key() : 0.0;
+}
+
+void QCPSyncer::setRulerKey(int id, double key)
+{
+  if (!mRulers.contains(id))
+    return;
+  setRulerKeyInternal(id, key);
+}
+
+void QCPSyncer::setRulersVisible(bool visible)
+{
+  if (mRulersVisible == visible)
+    return;
+  mRulersVisible = visible;
+  for (QCPRuler *ruler : mRulers)
+    ruler->setVisible(visible);
+  refreshAll();
+  queueReplotAll();
+}
+
+bool QCPSyncer::rulersVisible() const
+{
+  return mRulersVisible;
+}
+
+void QCPSyncer::setActiveRuler(int id)
+{
+  mActiveRulerId = id;
+  for (QCPRuler *ruler : mRulers)
+    ruler->setActive(ruler->id() == id);
+  refreshAll();
+  queueReplotAll();
+}
+
+int QCPSyncer::activeRulerId() const
+{
+  if (mRulers.contains(mActiveRulerId))
+    return mActiveRulerId;
+  return mRulerOrder.isEmpty() ? -1 : mRulerOrder.last();
+}
+
+QColor QCPSyncer::rulerColor(int id) const
+{
+  QCPRuler *ruler = mRulers.value(id);
+  return ruler ? ruler->color() : defaultRulerColor(id);
+}
+
+void QCPSyncer::setRulerColor(int id, const QColor &color)
+{
+  QCPRuler *ruler = mRulers.value(id);
+  if (!ruler)
+    return;
+  ruler->setColor(color);
+  refreshAll();
+  queueReplotAll();
+}
+
+int QCPSyncer::rulerAt(QCustomPlot *plot, const QPoint &pos) const
+{
+  QCPAxis *axis = axisAt(plot, pos);
+  if (!axis)
+    return -1;
+  int bestId = -1;
+  double bestDistance = RULER_GRAB_RADIUS;
+  for (int id : mRulerOrder)
+  {
+    QCPRuler *ruler = mRulers.value(id);
+    if (!ruler)
+      continue;
+    const double distance = qAbs(axis->coordToPixel(ruler->key()) - pos.x());
+    if (distance <= bestDistance)
+    {
+      bestDistance = distance;
+      bestId = id;
+    }
+  }
+  return bestId;
+}
+
+QCPRuler *QCPSyncer::ruler(int id) const
+{
+  return mRulers.value(id, nullptr);
+}
+
+QList<QCPRuler*> QCPSyncer::rulers() const
+{
+  QList<QCPRuler*> result;
+  result.reserve(mRulerOrder.size());
+  for (int id : mRulerOrder)
+  {
+    QCPRuler *r = mRulers.value(id, nullptr);
+    if (r)
+      result.append(r);
+  }
+  return result;
 }
 
 void QCPSyncer::setReadoutEnabled(QCPGraph *graph, bool enabled)
 {
-  mRuler->setReadoutEnabled(graph, enabled);
-  mRuler->refresh();
+  for (QCPRuler *ruler : mRulers)
+    ruler->setReadoutEnabled(graph, enabled);
+  refreshAll();
   queueReplotAll();
 }
 
 bool QCPSyncer::readoutEnabled(QCPGraph *graph) const
 {
-  return mRuler->readoutEnabled(graph);
+  for (QCPRuler *ruler : mRulers)
+  {
+    if (ruler->readoutEnabled(graph))
+      return true;
+  }
+  return mRulers.isEmpty();
 }
 
 void QCPSyncer::rescanGraphs()
 {
-  mRuler->rescanAll();
-  mRuler->refresh();
+  for (QCPRuler *ruler : mRulers)
+    ruler->rescanAll();
+  refreshAll();
   queueReplotAll();
 }
 
@@ -616,8 +459,9 @@ void QCPSyncer::setLabelPlot(QCustomPlot *plot)
   if (!plot || !mPlots.contains(plot))
     return;
   mLabelPlot = plot;
-  mRuler->setLabelPlot(plot);
-  mRuler->refresh();
+  for (QCPRuler *ruler : mRulers)
+    ruler->setLabelPlot(plot);
+  refreshAll();
   queueReplotAll();
 }
 
@@ -629,8 +473,9 @@ QCustomPlot *QCPSyncer::labelPlot() const
 void QCPSyncer::setLabelAxisRect(QCPAxisRect *rect)
 {
   mLabelAxisRect = rect;
-  mRuler->setLabelAxisRect(rect);
-  mRuler->refresh();
+  for (QCPRuler *ruler : mRulers)
+    ruler->setLabelAxisRect(rect);
+  refreshAll();
   queueReplotAll();
 }
 
@@ -641,19 +486,35 @@ QCPAxisRect *QCPSyncer::labelAxisRect() const
   return mLabelPlot ? mLabelPlot->axisRect() : nullptr;
 }
 
+void QCPSyncer::setXLabelPlacement(QCPRuler::XLabelPlacement placement)
+{
+  mXLabelPlacement = placement;
+  for (QCPRuler *ruler : mRulers)
+    ruler->setXLabelPlacement(placement);
+  refreshAll();
+  queueReplotAll();
+}
+
+QCPRuler::XLabelPlacement QCPSyncer::xLabelPlacement() const
+{
+  return mXLabelPlacement;
+}
+
 void QCPSyncer::setReadoutFormatter(std::function<QString(double)> formatter)
 {
   mReadoutFormatter = formatter;
-  mRuler->setReadoutFormatter(formatter);
-  mRuler->refresh();
+  for (QCPRuler *ruler : mRulers)
+    ruler->setReadoutFormatter(formatter);
+  refreshAll();
   queueReplotAll();
 }
 
 void QCPSyncer::setXLabelFormatter(std::function<QString(double)> formatter)
 {
   mXLabelFormatter = formatter;
-  mRuler->setXLabelFormatter(formatter);
-  mRuler->refresh();
+  for (QCPRuler *ruler : mRulers)
+    ruler->setXLabelFormatter(formatter);
+  refreshAll();
   queueReplotAll();
 }
 
@@ -679,19 +540,23 @@ bool QCPSyncer::eventFilter(QObject *watched, QEvent *event)
       if (mouseEvent->button() != Qt::LeftButton)
         break;
       const QPoint pos = mouseEvent->pos();
+      const int id = rulerAt(plot, pos);
+      if (id < 0)
+        break;
       QCPAxis *axis = axisAt(plot, pos);
       if (!axis)
         break;
-      if (qAbs(axis->coordToPixel(mRuler->key()) - pos.x()) > RULER_GRAB_RADIUS)
-        break;
       mDragging = true;
+      mDragRulerId = id;
       mDragPlot = plot;
       mDragAxis = axis;
+      setActiveRuler(id);
+      emit rulerActivated(id);
       plot->setCursor(Qt::SplitHCursor);
       double key = axis->pixelToCoord(pos.x());
       key = qBound(qMin(axis->range().lower, axis->range().upper),
                    key, qMax(axis->range().lower, axis->range().upper));
-      setRulerKeyInternal(key);
+      setRulerKeyInternal(id, key);
       return true;
     }
     case QEvent::MouseMove:
@@ -703,7 +568,7 @@ bool QCPSyncer::eventFilter(QObject *watched, QEvent *event)
         double key = mDragAxis->pixelToCoord(pos.x());
         key = qBound(qMin(mDragAxis->range().lower, mDragAxis->range().upper),
                      key, qMax(mDragAxis->range().lower, mDragAxis->range().upper));
-        setRulerKeyInternal(key);
+        setRulerKeyInternal(mDragRulerId, key);
         return true;
       }
       updateDragCursor(plot, pos);
@@ -715,6 +580,7 @@ bool QCPSyncer::eventFilter(QObject *watched, QEvent *event)
       if (mDragging && mouseEvent->button() == Qt::LeftButton)
       {
         mDragging = false;
+        mDragRulerId = -1;
         mDragPlot = nullptr;
         mDragAxis = nullptr;
         updateDragCursor(plot, mouseEvent->pos());
@@ -741,40 +607,53 @@ void QCPSyncer::onAxisRangeChanged(const QCPRange &range)
   applyRange(range, source);
 }
 
+QCPRange QCPSyncer::clampRange(const QCPRange &range) const
+{
+  if (!mHasKeyLimit)
+    return range;
+  const double limitLower = mKeyLimit.lower;
+  const double limitUpper = mKeyLimit.upper;
+  const double lower = qMin(range.lower, range.upper);
+  const double upper = qMax(range.lower, range.upper);
+  const double width = upper - lower;
+  if (width >= limitUpper - limitLower)
+    return QCPRange(limitLower, limitUpper);
+  double newLower = lower;
+  if (newLower < limitLower)
+    newLower = limitLower;
+  if (newLower + width > limitUpper)
+    newLower = limitUpper - width;
+  return QCPRange(newLower, newLower + width);
+}
+
 void QCPSyncer::applyRange(const QCPRange &range, QCPAxis *source)
 {
+  Q_UNUSED(source)
+  const QCPRange target = clampRange(range);
   mSyncing = true;
   const QList<QCPAxis*> axes = effectiveSyncedAxes();
   for (QCPAxis *axis : axes)
   {
-    if (axis && axis != source && !rangesEqual(axis->range(), range))
-      axis->setRange(range);
+    if (axis && !rangesEqual(axis->range(), target))
+      axis->setRange(target);
   }
   mSyncing = false;
-  emit syncedRangeChanged(range);
-  mRuler->refresh();
+  emit syncedRangeChanged(target);
+  refreshAll();
   queueReplotAll();
 }
 
 QList<QCPAxis*> QCPSyncer::effectiveSyncedAxes() const
 {
   QList<QCPAxis*> result;
-  if (!mExplicitSyncedAxes.isEmpty())
-  {
-    for (QCPAxis *axis : mExplicitSyncedAxes)
-    {
-      if (axis && mPlots.contains(axis->parentPlot()))
-        result.append(axis);
-    }
-    return result;
-  }
   for (QCustomPlot *plot : mPlots)
   {
     if (!plot)
       continue;
     for (int i = 0; i < plot->axisRectCount(); ++i)
     {
-      QCPAxis *axis = plot->axisRect(i)->axis(QCPAxis::atBottom);
+      QCPAxisRect *rect = plot->axisRect(i);
+      QCPAxis *axis = rect ? rect->axis(QCPAxis::atBottom) : nullptr;
       if (axis && !result.contains(axis))
         result.append(axis);
     }
@@ -784,7 +663,7 @@ QList<QCPAxis*> QCPSyncer::effectiveSyncedAxes() const
 
 void QCPSyncer::rebuildConnections()
 {
-  for (QCPAxis *axis : mConnectedAxes)
+  for (const QPointer<QCPAxis> &axis : mConnectedAxes)
   {
     if (axis)
       disconnectAxis(axis);
@@ -815,8 +694,7 @@ void QCPSyncer::updateDragCursor(QCustomPlot *plot, const QPoint &pos)
 {
   if (!plot)
     return;
-  QCPAxis *axis = axisAt(plot, pos);
-  if (axis && qAbs(axis->coordToPixel(mRuler->key()) - pos.x()) <= RULER_GRAB_RADIUS)
+  if (rulerAt(plot, pos) >= 0)
     plot->setCursor(Qt::SplitHCursor);
   else
     plot->unsetCursor();
@@ -826,6 +704,7 @@ QCPAxis *QCPSyncer::axisAt(QCustomPlot *plot, const QPoint &pos) const
 {
   if (!plot)
     return nullptr;
+  QCPAxis *fallback = nullptr;
   const QList<QCPAxis*> axes = effectiveSyncedAxes();
   for (QCPAxis *axis : axes)
   {
@@ -834,18 +713,34 @@ QCPAxis *QCPSyncer::axisAt(QCustomPlot *plot, const QPoint &pos) const
     QCPAxisRect *rect = axis->axisRect();
     if (rect && rect->rect().contains(pos))
       return axis;
+    if (!fallback && rect)
+      fallback = axis;
   }
-  return nullptr;
+  // Ruler lines span the whole widget, so they must stay grabbable in the margins and
+  // in the gaps between axis rects as well. All synced rects share the same horizontal
+  // scale, so any of them maps the x position correctly.
+  return fallback;
 }
 
-void QCPSyncer::setRulerKeyInternal(double key)
+void QCPSyncer::setRulerKeyInternal(int id, double key)
 {
-  if (qFuzzyCompare(mRuler->key(), key) && mKeyInitialized)
+  QCPRuler *ruler = mRulers.value(id);
+  if (!ruler)
     return;
-  mRuler->setKey(key);
-  mRuler->refresh();
+  if (mHasKeyLimit)
+    key = clampRange(QCPRange(key, key)).lower;
+  if (qFuzzyCompare(ruler->key(), key))
+    return;
+  ruler->setKey(key);
+  ruler->refresh();
   queueReplotAll();
-  emit rulerKeyChanged(key);
+  emit rulerKeyChanged(id, key);
+}
+
+void QCPSyncer::refreshAll()
+{
+  for (QCPRuler *ruler : mRulers)
+    ruler->refresh();
 }
 
 void QCPSyncer::queueReplotAll()

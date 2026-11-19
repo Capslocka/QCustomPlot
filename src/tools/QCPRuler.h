@@ -3,38 +3,54 @@
    Licensed under the GNU General Public License v3, see GPL.txt.
    Automatically split from the amalgamated qcustomplot.h/.cpp; keep code in sync. */
 
-#ifndef QCPSYNCER_P_H
-#define QCPSYNCER_P_H
+#ifndef QCPRULER_H
+#define QCPRULER_H
 
-#include "QCPSyncer.h"
+#include "QCPGlobal.h"
+#include "QCustomPlot.h"
+#include "QCPAxisRect.h"
+#include "QCPGraph.h"
 #include "QCPItemStraightLine.h"
 #include "QCPItemTracer.h"
 #include "QCPItemText.h"
 
+#include <QColor>
 #include <QHash>
 #include <QList>
 #include <QPointer>
 
+#include <functional>
+
 //! One draggable vertical ruler with per-graph readout items, spanning several QCustomPlot widgets.
-class QCPRuler
+class QCP_LIB_DECL QCPRuler
 {
 public:
-  QCPRuler();
+  //! Where the ruler x value label is drawn relative to the label axis rect.
+  enum XLabelPlacement { xlpBelowAxis ///< Below the bottom axis, outside the axis rect
+                         ,xlpRectInside ///< Inside the axis rect, bottom edge, right-aligned at the ruler
+                       };
+
+  explicit QCPRuler(int id);
   ~QCPRuler();
+
+  int id() const { return mId; }
 
   void setKey(double key);
   double key() const { return mKey; }
   void setVisible(bool visible);
   bool visible() const { return mVisible; }
-  void setPen(const QPen &pen);
-  QPen pen() const { return mPen; }
+  void setActive(bool active);
+  bool active() const { return mActive; }
+  void setColor(const QColor &color);
+  QColor color() const { return mColor; }
 
   void setReadoutEnabled(QCPGraph *graph, bool enabled);
-  bool readoutEnabled(QCPGraph *graph) const;
+  bool readoutEnabled(QCPGraph *graph);
   void setReadoutFormatter(std::function<QString(double)> formatter);
   void setXLabelFormatter(std::function<QString(double)> formatter);
   void setLabelPlot(QCustomPlot *plot);
   void setLabelAxisRect(QCPAxisRect *rect);
+  void setXLabelPlacement(XLabelPlacement placement);
 
   void attachPlot(QCustomPlot *plot);
   void detachPlot(QCustomPlot *plot);
@@ -49,10 +65,9 @@ public:
 private:
   struct PlotItems
   {
-    QList<QCPItemStraightLine*> lines;
-    QList<QCPAxisRect*> lineRects;
-    QHash<QCPGraph*, QCPItemTracer*> tracers;
-    QHash<QCPGraph*, QCPItemText*> labels;
+    QPointer<QCPItemStraightLine> line;
+    QHash<QCPGraph*, QPointer<QCPItemTracer> > tracers;
+    QHash<QCPGraph*, QPointer<QCPItemText> > labels;
   };
 
   void createPlotItems(QCustomPlot *plot);
@@ -61,19 +76,24 @@ private:
   void ensureLabelItem();
   void discardLabelItem();
   void updatePlotVisuals(QCustomPlot *plot);
+  void updateXLabel();
+  QPen linePen() const;
   QString readoutText(QCPGraph *graph, bool *visible) const;
   QString xLabelText(double key, QCPAxis *axis) const;
 
+  int mId;
   double mKey;
   bool mVisible;
-  QPen mPen;
-  QHash<QCPGraph*, bool> mDisabledGraphs;
+  bool mActive;
+  QColor mColor;
+  QList<QPointer<QCPGraph> > mDisabledGraphs;
   QHash<QCustomPlot*, PlotItems> mItems;
   QPointer<QCustomPlot> mLabelPlot;
   QPointer<QCPAxisRect> mLabelAxisRect;
   QPointer<QCPItemText> mXLabelItem;
+  XLabelPlacement mXLabelPlacement;
   std::function<QString(double)> mReadoutFormatter;
   std::function<QString(double)> mXLabelFormatter;
 };
 
-#endif // QCPSYNCER_P_H
+#endif // QCPRULER_H

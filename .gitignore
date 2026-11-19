@@ -20,6 +20,7 @@ _deps/
 CPackConfig.cmake
 CPackSourceConfig.cmake
 CMakeUserPresets.json
+CMakePresets.json
 
 # Qt Creator
 *.pro.user
