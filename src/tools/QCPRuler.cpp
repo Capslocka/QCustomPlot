@@ -223,7 +223,10 @@ double QCPRuler::interpolate(QCPGraph *graph, bool *ok) const
   if (mKey < begin->key || mKey > last->key)
     return 0;
 
-  QCPGraphDataContainer::const_iterator it = container.findBegin(mKey);
+  // The candidate must be the first point at or after mKey: interpolation needs the
+  // bracketing pair (prev, it), otherwise a NaN gap point would only poison one half
+  // of the gap and real points left of the gap would be extrapolated across it.
+  QCPGraphDataContainer::const_iterator it = container.findBegin(mKey, false);
   double value = 0;
   if (it == container.constEnd())
   {
@@ -238,6 +241,8 @@ double QCPRuler::interpolate(QCPGraph *graph, bool *ok) const
     const double t = span > 0 ? (mKey - prev->key) / span : 0;
     value = prev->value + t * (it->value - prev->value);
   }
+  if (qIsNaN(value))
+    return 0; // NaN points mark line gaps (e.g. hidden intervals), no readout there
   if (ok)
     *ok = true;
   return value;
@@ -409,6 +414,11 @@ void QCPRuler::updateXLabel()
     return;
 
   mXLabelItem->setText(xLabelText(mKey, axis));
+  if (mXLabelItem->text().isEmpty())
+  {
+    mXLabelItem->setVisible(false);
+    return;
+  }
 
   // The label is never clipped to the axis rect, so the widget viewport is the only
   // boundary that can cut it off.

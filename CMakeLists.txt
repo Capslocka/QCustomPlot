@@ -15,10 +15,12 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/src/QCustomPlotSources.cmake)
 set(QCUSTOMPLOT_TOOLS_SOURCES
   src/tools/QCPSyncer.cpp
   src/tools/QCPRuler.cpp
+  src/tools/QCPAxisBreak.cpp
 )
 set(QCUSTOMPLOT_TOOLS_HEADERS
   src/tools/QCPSyncer.h
   src/tools/QCPRuler.h
+  src/tools/QCPAxisBreak.h
 )
 
 add_library(QCustomPlot
@@ -81,6 +83,7 @@ install(FILES ${QCUSTOMPLOT_HEADERS} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/QCu
 install(FILES
   src/tools/QCPSyncer.h
   src/tools/QCPRuler.h
+  src/tools/QCPAxisBreak.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/QCustomPlot
 )
 

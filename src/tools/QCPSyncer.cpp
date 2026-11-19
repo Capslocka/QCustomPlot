@@ -11,16 +11,6 @@
 
 #include <algorithm>
 
-namespace
-{
-const int RULER_GRAB_RADIUS = 6;
-
-bool rangesEqual(const QCPRange &a, const QCPRange &b)
-{
-  return qFuzzyCompare(a.lower, b.lower) && qFuzzyCompare(a.upper, b.upper);
-}
-} // namespace
-
 // ---------------------------------------------------------------------------
 // QCPSyncer
 // ---------------------------------------------------------------------------
@@ -394,7 +384,7 @@ int QCPSyncer::rulerAt(QCustomPlot *plot, const QPoint &pos) const
   if (!axis)
     return -1;
   int bestId = -1;
-  double bestDistance = RULER_GRAB_RADIUS;
+  double bestDistance = 6; // rulers within 6 px of the cursor are grabbable
   for (int id : mRulerOrder)
   {
     QCPRuler *ruler = mRulers.value(id);
@@ -634,7 +624,10 @@ void QCPSyncer::applyRange(const QCPRange &range, QCPAxis *source)
   const QList<QCPAxis*> axes = effectiveSyncedAxes();
   for (QCPAxis *axis : axes)
   {
-    if (axis && !rangesEqual(axis->range(), target))
+    if (!axis)
+      continue;
+    const QCPRange current = axis->range();
+    if (!qFuzzyCompare(current.lower, target.lower) || !qFuzzyCompare(current.upper, target.upper))
       axis->setRange(target);
   }
   mSyncing = false;

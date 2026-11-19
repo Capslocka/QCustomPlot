@@ -66,3 +66,10 @@ add_executable(sync-demo-example
   sync-demo/mainwindow.h
 )
 target_link_libraries(sync-demo-example PRIVATE QCustomPlot::QCustomPlot)
+
+add_executable(axis-break-demo-example
+  axis-break-demo/main.cpp
+  axis-break-demo/mainwindow.cpp
+  axis-break-demo/mainwindow.h
+)
+target_link_libraries(axis-break-demo-example PRIVATE QCustomPlot::QCustomPlot)
