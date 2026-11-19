@@ -59,6 +59,23 @@ void QCPRuler::setColor(const QColor &color)
   mColor = color;
 }
 
+void QCPRuler::setTitle(const QString &title)
+{
+  if (mTitle == title)
+    return;
+  mTitle = title;
+  updateTitleLabel();
+}
+
+bool QCPRuler::titleHitTest(QCustomPlot *plot, const QPoint &pos) const
+{
+  if (!mTitleItem || !plot || plot != mLabelPlot || mTitle.isEmpty() || !mVisible)
+    return false;
+  if (!mTitleItem->visible())
+    return false;
+  return mTitleItem->selectTest(pos, false) <= 10.0;
+}
+
 void QCPRuler::setReadoutEnabled(QCPGraph *graph, bool enabled)
 {
   if (!graph)
@@ -146,6 +163,7 @@ void QCPRuler::forgetPlot(QCustomPlot *plot)
   if (mLabelPlot == plot)
   {
     mXLabelItem = nullptr;
+    mTitleItem = nullptr;
     mLabelPlot = nullptr;
     mLabelAxisRect = nullptr;
   }
@@ -199,7 +217,10 @@ void QCPRuler::refreshPlot(QCustomPlot *plot)
     return;
   updatePlotVisuals(plot);
   if (mLabelPlot == plot)
+  {
     updateXLabel();
+    updateTitleLabel();
+  }
 }
 
 void QCPRuler::refresh()
@@ -208,6 +229,7 @@ void QCPRuler::refresh()
   for (QCustomPlot *plot : plots)
     updatePlotVisuals(plot);
   updateXLabel();
+  updateTitleLabel();
 }
 
 double QCPRuler::interpolate(QCPGraph *graph, bool *ok) const
@@ -306,6 +328,14 @@ void QCPRuler::ensureLabelItem()
   mXLabelItem->setBrush(QBrush(QColor(255, 255, 255, 220)));
   mXLabelItem->position->setType(QCPItemPosition::ptAbsolute);
   mXLabelItem->setVisible(false);
+
+  mTitleItem = new QCPItemText(mLabelPlot);
+  mTitleItem->setLayer("overlay");
+  mTitleItem->setClipToAxisRect(false);
+  mTitleItem->setPadding(QMargins(3, 1, 3, 1));
+  mTitleItem->setBrush(QBrush(QColor(255, 255, 255, 220)));
+  mTitleItem->position->setType(QCPItemPosition::ptAbsolute);
+  mTitleItem->setVisible(false);
 }
 
 void QCPRuler::discardLabelItem()
@@ -316,6 +346,13 @@ void QCPRuler::discardLabelItem()
     if (plot)
       plot->removeItem(mXLabelItem); // deletes the item
     mXLabelItem = nullptr;
+  }
+  if (mTitleItem)
+  {
+    QCustomPlot *plot = mTitleItem->parentPlot();
+    if (plot)
+      plot->removeItem(mTitleItem); // deletes the item
+    mTitleItem = nullptr;
   }
 }
 
@@ -462,6 +499,54 @@ void QCPRuler::updateXLabel()
     }
   }
   mXLabelItem->setPen(QPen(mColor));
+}
+
+void QCPRuler::updateTitleLabel()
+{
+  ensureLabelItem();
+  if (!mTitleItem)
+    return;
+
+  QCPAxisRect *rect = mLabelAxisRect;
+  if (!rect && mLabelPlot)
+    rect = mLabelPlot->axisRect();
+  QCPAxis *axis = rect ? rect->axis(QCPAxis::atBottom) : nullptr;
+  if (!rect || !axis || mTitle.isEmpty())
+  {
+    mTitleItem->setVisible(false);
+    return;
+  }
+
+  const double x = axis->coordToPixel(mKey);
+  const bool inside = mVisible && x >= rect->left() && x <= rect->right() + 1;
+  mTitleItem->setVisible(inside);
+  if (!inside)
+    return;
+
+  mTitleItem->setText(mTitle);
+  mTitleItem->setPen(QPen(mColor));
+
+  // Title sits at the top edge of the label plot; near the right edge it flips to the
+  // left side of the ruler line so it stays fully visible.
+  QCustomPlot *labelPlot = mTitleItem->parentPlot();
+  const int viewWidth = labelPlot ? labelPlot->viewport().width() : 0;
+  const QFontMetrics metrics(mTitleItem->font());
+  const QMargins padding = mTitleItem->padding();
+  const int titleWidth = metrics.horizontalAdvance(mTitle)
+      + padding.left() + padding.right();
+  const int gap = 5;
+  const int edge = 2;
+  const double y = 3;
+
+  if (viewWidth > 0 && x + gap + titleWidth > viewWidth - edge)
+  {
+    mTitleItem->setPositionAlignment(Qt::AlignRight | Qt::AlignTop);
+    mTitleItem->position->setCoords(x - gap, y);
+  } else
+  {
+    mTitleItem->setPositionAlignment(Qt::AlignLeft | Qt::AlignTop);
+    mTitleItem->position->setCoords(x + gap, y);
+  }
 }
 
 QString QCPRuler::readoutText(QCPGraph *graph, bool *visible) const

@@ -44,6 +44,12 @@ public:
   void setColor(const QColor &color);
   QColor color() const { return mColor; }
 
+  //! Title shown at the top of the label plot; empty by default (no item drawn).
+  void setTitle(const QString &title);
+  QString title() const { return mTitle; }
+  //! True when \a pos (label plot coordinates) hits the drawn title item.
+  bool titleHitTest(QCustomPlot *plot, const QPoint &pos) const;
+
   void setReadoutEnabled(QCPGraph *graph, bool enabled);
   bool readoutEnabled(QCPGraph *graph);
   void setReadoutFormatter(std::function<QString(double)> formatter);
@@ -77,6 +83,7 @@ private:
   void discardLabelItem();
   void updatePlotVisuals(QCustomPlot *plot);
   void updateXLabel();
+  void updateTitleLabel();
   QPen linePen() const;
   QString readoutText(QCPGraph *graph, bool *visible) const;
   QString xLabelText(double key, QCPAxis *axis) const;
@@ -86,11 +93,13 @@ private:
   bool mVisible;
   bool mActive;
   QColor mColor;
+  QString mTitle;
   QList<QPointer<QCPGraph> > mDisabledGraphs;
   QHash<QCustomPlot*, PlotItems> mItems;
   QPointer<QCustomPlot> mLabelPlot;
   QPointer<QCPAxisRect> mLabelAxisRect;
   QPointer<QCPItemText> mXLabelItem;
+  QPointer<QCPItemText> mTitleItem;
   XLabelPlacement mXLabelPlacement;
   std::function<QString(double)> mReadoutFormatter;
   std::function<QString(double)> mXLabelFormatter;

@@ -80,6 +80,11 @@ public:
   QCPRuler *ruler(int id) const;
   //! Returns all rulers in creation order.
   QList<QCPRuler*> rulers() const;
+  //! Title drawn at the top of the label plot for the given ruler.
+  void setRulerTitle(int id, const QString &title);
+  QString rulerTitle(int id) const;
+  //! Returns the id of the ruler whose title label contains \a pos, or -1.
+  int rulerTitleAt(QCustomPlot *plot, const QPoint &pos) const;
 
   // readouts:
   void setReadoutEnabled(QCPGraph *graph, bool enabled);

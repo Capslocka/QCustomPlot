@@ -418,6 +418,33 @@ QList<QCPRuler*> QCPSyncer::rulers() const
   return result;
 }
 
+void QCPSyncer::setRulerTitle(int id, const QString &title)
+{
+  QCPRuler *r = mRulers.value(id);
+  if (!r)
+    return;
+  r->setTitle(title);
+  r->refresh();
+  queueReplotAll();
+}
+
+QString QCPSyncer::rulerTitle(int id) const
+{
+  QCPRuler *r = mRulers.value(id);
+  return r ? r->title() : QString();
+}
+
+int QCPSyncer::rulerTitleAt(QCustomPlot *plot, const QPoint &pos) const
+{
+  for (int id : mRulerOrder)
+  {
+    QCPRuler *r = mRulers.value(id);
+    if (r && r->titleHitTest(plot, pos))
+      return id;
+  }
+  return -1;
+}
+
 void QCPSyncer::setReadoutEnabled(QCPGraph *graph, bool enabled)
 {
   for (QCPRuler *ruler : mRulers)
@@ -530,6 +557,9 @@ bool QCPSyncer::eventFilter(QObject *watched, QEvent *event)
       if (mouseEvent->button() != Qt::LeftButton)
         break;
       const QPoint pos = mouseEvent->pos();
+      // Title clicks stay with the host (rename dialog); only bare line hits start a drag.
+      if (rulerTitleAt(plot, pos) >= 0)
+        break;
       const int id = rulerAt(plot, pos);
       if (id < 0)
         break;
